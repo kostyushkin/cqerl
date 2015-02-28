@@ -8,7 +8,7 @@
 %% API Function Exports
 %% ------------------------------------------------------------------
 
--export([start_link/0, lookup/1, lookup/2, lookup_many/2,
+-export([start_link/0, lookup/1, lookup/2,
          query_was_prepared/2, query_preparation_failed/2]).
 
 %% ------------------------------------------------------------------
@@ -20,7 +20,7 @@
 
 -define(QUERIES_TAB, cqerl_cached_queries).
 -define(NAMED_BINDINGS_RE_KEY, cqerl_cache_named_bindings_re).
--define(NAMED_BINDINGS_RE, "'*(\\?|:\\w+)'*(?:(?:[^\"]*\"[^\"]*\")*[^\"]*$)").
+-define(NAMED_BINDINGS_RE, "'*(\\?|:\\w+)'*(?=([^\"]*\"[^\"]*\")*[^\"]*$)").
 
 -record(state, {
     cached_queries :: ets:tid(),
@@ -54,11 +54,11 @@ lookup(_ClientPid, #cql_query{reusable=false}) ->
 lookup(ClientPid, Query = #cql_query{statement=Statement}) ->
     case get(?NAMED_BINDINGS_RE_KEY) of
         undefined ->
-            {ok, RE} = re2:compile(?NAMED_BINDINGS_RE),
+            {ok, RE} = re:compile(?NAMED_BINDINGS_RE),
             put(?NAMED_BINDINGS_RE_KEY, RE);
         RE -> ok
     end,
-    case re2:match(Statement, RE) of
+    case re:run(Statement, RE) of
         nomatch ->
             lookup(ClientPid, Query#cql_query{reusable=false, named=false});
 
@@ -74,26 +74,7 @@ lookup(ClientPid, Query = #cql_query{statement=Statement}) ->
     end.
 
 
-lookup_many(ClientPid, Queries) ->
-    { States, _ } = lists:foldr(fun
-        (#cql_query{reusable=false}, { States0, Statements }) ->
-            { [uncached | States0], Statements };
-
-        (Query=#cql_query{statement=Statement}, { States0, Statements }) ->
-            case orddict:find(Statement, Statements) of
-                error ->
-                    Value = lookup(ClientPid, Query),
-                    { [Value | States0],
-                       orddict:store(Statement, Value, Statements)};
-
-                {ok, Value} ->
-                    { [Value | States0], Statements }
-            end
-    end, {[], orddict:new()}, Queries),
-    States.
-
-
-query_was_prepared({Pid, _Query}=Key, Result) when is_pid(Pid) ->
+query_was_prepared({Pid, Query}=Key, Result) when is_pid(Pid) ->
     gen_server:cast(?SERVER, {query_prepared, Key, Result});
 
 query_was_prepared(Query, Result) ->

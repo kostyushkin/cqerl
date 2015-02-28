@@ -19,10 +19,6 @@
 
 -define(QUERIES_MAX, 128).
 -define(QUERIES_HW, 88).
--define(FSM_TIMEOUT, case application:get_env(cqerl, query_timeout) of
-    undefined -> 30000;
-    {ok, Val} -> Val
-end).
 
 -define(STATE_FROM_RETURN(Resp), case element(tuple_size(Resp), Resp) of
     N_ when is_integer(N_) -> element(tuple_size(Resp) - 1, Resp);
@@ -79,13 +75,13 @@ remove_user({ClientPid, ClientRef}) ->
     gen_fsm:send_event(ClientPid, {remove_user, ClientRef}).
 
 run_query({ClientPid, ClientRef}, Query) when is_binary(Query) ->
-    gen_fsm:sync_send_event(ClientPid, {send_query, ClientRef, #cql_query{statement=Query}}, ?FSM_TIMEOUT);
+    gen_fsm:sync_send_event(ClientPid, {send_query, ClientRef, #cql_query{statement=Query}});
 run_query({ClientPid, ClientRef}, Query) when is_list(Query) ->
-    gen_fsm:sync_send_event(ClientPid, {send_query, ClientRef, #cql_query{statement=list_to_binary(Query)}}, ?FSM_TIMEOUT);
+    gen_fsm:sync_send_event(ClientPid, {send_query, ClientRef, #cql_query{statement=list_to_binary(Query)}});
 run_query({ClientPid, ClientRef}, Query=#cql_query{statement=Statement}) when is_list(Statement) ->
-    gen_fsm:sync_send_event(ClientPid, {send_query, ClientRef, Query#cql_query{statement=list_to_binary(Statement)}}, ?FSM_TIMEOUT);
+    gen_fsm:sync_send_event(ClientPid, {send_query, ClientRef, Query#cql_query{statement=list_to_binary(Statement)}});
 run_query({ClientPid, ClientRef}, Query) ->
-    gen_fsm:sync_send_event(ClientPid, {send_query, ClientRef, Query}, ?FSM_TIMEOUT).
+    gen_fsm:sync_send_event(ClientPid, {send_query, ClientRef, Query}).
 
 query_async(Client, Query) when is_binary(Query) ->
     query_async(Client, #cql_query{statement=Query});
@@ -99,7 +95,7 @@ query_async({ClientPid, ClientRef}, Query) ->
     QueryRef.
 
 fetch_more(Continuation=#cql_result{client={ClientPid, ClientRef}}) ->
-    gen_fsm:sync_send_event(ClientPid, {fetch_more, ClientRef, Continuation}, ?FSM_TIMEOUT).
+    gen_fsm:sync_send_event(ClientPid, {fetch_more, ClientRef, Continuation}).
 
 fetch_more_async(Continuation=#cql_result{client={ClientPid, ClientRef}}) ->
     QueryRef = make_ref(),
@@ -709,16 +705,9 @@ create_socket({Addr, Port}, Opts) ->
     Result = case proplists:lookup(ssl, Opts) of
         {ssl, false} ->
             Transport = tcp,
-            case proplists:lookup(tcp_opts, Opts) of
-                none ->
-                    gen_tcp:connect(Addr, Port, BaseOpts, 2000);
-                {tcp_opts, TCPOpts} ->
-                    gen_tcp:connect(Addr, Port, BaseOpts ++ TCPOpts, 2000)
-            end;
-
+            gen_tcp:connect(Addr, Port, BaseOpts, 2000);
         {ssl = Transport, true} ->
             ssl:connect(Addr, Port, BaseOpts, 2000);
-
         {ssl = Transport, SSLOpts} when is_list(SSLOpts) ->
             ssl:connect(Addr, Port, SSLOpts ++ BaseOpts, 2000)
     end,
